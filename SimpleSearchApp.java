@@ -18,6 +18,8 @@ import javafx.scene.web.WebView;
 import javafx.stage.Stage;
 import javafx.collections.FXCollections;
 import javafx.scene.control.ComboBox;
+import javafx.concurrent.Worker;
+import netscape.javascript.JSObject;
 
 /**
  * Ne pas oublier de rajouter la main class dans le fichier MANIFEST.MF
@@ -38,6 +40,22 @@ public class SimpleSearchApp extends Application {
         WebView webView = new WebView();
         WebEngine engine = webView.getEngine();
         WebHistory history = engine.getHistory();
+
+        // Pont Java ↔ JavaScript pour contourner les limitations de WebView
+        // (ouverture de fichier et téléchargement) — voir FileBridge.java.
+        // "window" est recréé à chaque chargement de page, donc le pont
+        // doit être réinjecté après chaque navigation réussie.
+        FileBridge fileBridge = new FileBridge(stage, engine);
+        engine.getLoadWorker().stateProperty().addListener((obs, oldState, newState) -> {
+            if (newState == Worker.State.SUCCEEDED) {
+                try {
+                    JSObject window = (JSObject) engine.executeScript("window");
+                    window.setMember("javaApp", fileBridge);
+                } catch (Exception ignored) {
+                    // Page sans contexte JS exploitable (ex: about:blank) — sans conséquence.
+                }
+            }
+        });
 
         TextField addressBar = new TextField(HOME_URL);
 
